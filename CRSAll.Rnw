@@ -1,0 +1,113 @@
+% 02/03/2015 : Prog inspired by : PI\OCAD\AnalyseMultisecteur.Rnw
+% 03/03/2015 : Prog  compatible parallele processing
+% 05/03/2015 : Saving tables for test in order to compile results
+
+%          
+\documentclass[a4paper]{article}
+
+\title{Does size matter ? All  sectors (\textbf{Three} inputs).}
+\author{Christophe \& Vincent }
+
+
+\usepackage{Sweave, setspace,graphicx,srcltx,enumitem,harvard, subfig}
+\usepackage{rotating}
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+%\SweaveOpts{concordance=TRUE}
+
+% Quelques Options de dipart pour mettre les graphiques dans un sous repertoire
+% et leur donner le nom Graph-001
+
+\SweaveOpts{prefix.string=Graphics/V1}  
+
+% Et pour laisser l affichage des commentaires du programmes
+\SweaveOpts{keep.source=TRUE}
+% On supprime la page de garde   !!!
+
+\maketitle
+\date
+
+%\tableofcontents
+%\newpage
+
+% <<results=hide>>=               % <--- si l'on souhaite ne pas afficher les risultats...
+% <<echo=false,results=hide>>=    % <--- si l'on ne souhaite ni code, ni risultats... 
+
+
+<<echo=FALSE, results=hide, label=GlobalVariables>>=
+
+## D abord on efface tout silencieusement... pas si on traite par lots !!
+
+rm(list=ls())  
+
+## Second change the working directory
+
+setwd("D:/progs/CRS")    
+#setwd("C:/Chris/progs/CRS")   
+
+chemin <- "d:/progs/CRS"
+
+library(Benchmarking)
+library(foreign)
+library(np)
+library(ineq)
+library(reporttools)
+library(frontiles)
+library(FEAR)
+library(xtable)
+@
+
+<<echo=FALSE, results=hide, label=Data>>=
+
+# Ensemble de fichiers 
+
+ListAll <-c("D151E", "D152Z", "D153E", "D158K", "D158V",  "D159F", "D159G","D151A","D151C","D155A", "D155C", "D156A",  "D157A", "D158A")
+
+#On teste avec 4
+List4 <-c("D151E", "D152Z", "D153E",  "D158K")
+
+SecList <-ListAll
+
+# Initializing final tables 
+Table.full.rts <- NA
+Table.full.li <- NA
+
+for (s in 1:length(SecList)) {
+  SecList[s]
+  load(paste(paste(chemin,"/graphics/Results",SecList[s],".RData", sep="")))
+  Table.full.rts <- rbind(Table.full.rts, Table.rts)
+  Table.full.li <- rbind(Table.full.li, Table.li)
+
+}
+
+digits(Table.full.rts) <- 3
+digits(Table.full.li) <- 3
+
+foo <- xtable(Table.full.rts,  digits = 3)
+print(foo, type= "latex", include.rownames=FALSE, 
+      file= paste(chemin,"/Graphics/test-RTS-All.tex", sep="" ))
+
+spam <- xtable(Table.full.li,  digits = 3)
+print(spam, type= "latex", include.rownames=FALSE, 
+      file= paste(chemin,"/Graphics/test-Li-All.tex", sep="" ))
+
+@
+
+All the agro-food sectors. We focus on years \Sexpr{unique(an1x)[1]} - 2006. We choosed to have \Sexpr{Nboot.Simar} bootstraps for the Simar-Wilson (2002) test. For the efficiencies, we chose an $\alpha$-frontier with $\alpha$=\Sexpr{alpha.f}, and a level of rejection for the test of \Sexpr{alpha.li}. 
+
+
+<<echo=false,results=tex, label=StatRTS>>=
+xtable(Table.full.rts,  digits = 3, 
+       caption= paste(" RTS test with", Nboot.Simar, "bootstraps (Simar-Wilson, 2002)"))
+
+@
+
+
+
+<<echo=false,results=tex, label=StatLi>>=
+xtable(Table.full.li,  digits = 3,        
+caption= paste(" Test for equality of efficiency densities for small and large firm  with", Nboot.Li, "bootstraps (Li, Maasoumi, Racine,2009 ), level for rejection", alpha.li,"."))
+@
+
+
+\end{document}
