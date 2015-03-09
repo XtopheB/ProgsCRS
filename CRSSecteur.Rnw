@@ -1,0 +1,507 @@
+% 02/03/2015:Prog inspired by : PI\OCAD\AnalyseMultisecteur.Rnw
+
+%          
+\documentclass[a4paper]{article}
+
+\title{Does size matter}
+\author{Christophe \& Vincent }
+
+
+\usepackage{Sweave, setspace,graphicx,srcltx,enumitem,harvard, subfig}
+\usepackage{rotating}
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+%\SweaveOpts{concordance=TRUE}
+
+% Quelques Options de dipart pour mettre les graphiques dans un sous repertoire
+% et leur donner le nom Graph-001
+
+\SweaveOpts{prefix.string=Graphics/V1}  
+
+% Et pour laisser l affichage des commentaires du programmes
+\SweaveOpts{keep.source=TRUE}
+% On supprime la page de garde   !!!
+%\maketitle
+%\tableofcontents
+%\newpage
+
+% <<results=hide>>=               % <--- si l'on souhaite ne pas afficher les risultats...
+% <<echo=false,results=hide>>=    % <--- si l'on ne souhaite ni code, ni risultats... 
+
+
+<<echo=FALSE, results=hide, label=GlobalVariables>>=
+
+## D abord on efface tout silencieusement... pas si on traite par lots !!
+
+#rm(list=ls())   # <<<<<<<< commenter si traitement par lots !!!!
+
+## Second change the working directory
+
+#setwd("D:/progs/CRS")   
+#setwd("C:/Chris/progs/CRS")   
+
+library(Benchmarking)
+library(foreign)
+library(np)
+library(ineq)
+library(reporttools)
+library(frontiles)
+#library(FEAR)
+library(xtable)
+@
+
+<<echo=FALSE, results=hide, label=Data>>=
+
+# Data File importation  (compatible traitement par lot )    
+ASecteur <-scan("Secteur.dat", what = list(""))
+Secteur <- as.character(ASecteur[1])
+
+#Secteur <- "D151A"  # pour test
+
+dataall <- read.dta(paste("Data/",Secteur,"Stat.dta", sep = ""))   # All years
+dim(dataall)
+
+#Pb d'importation 
+dataall$an1x<-as.numeric(as.character(dataall$an1x))
+# Sector name...
+nom <- as.character(dataall$libelleape[1])
+
+# Selecting years 2004, 2005, 2006 
+
+data.work <- subset(dataall,an1x >=2004 & atyp==0)  # <- three last years
+n.all<- nrow(data.work)
+
+#Outliers
+data.work.out <- subset(dataall,an1x >=2004 & atyp==1)   # QUE les atypiques
+n.out  <- nrow(data.work.out)
+
+# Definition of " SMALL" firms
+borneSmall <- round(quantile(data.work$Y,probs=c(0.50))/100, d=0)*100
+data.work.small <- subset(data.work, Y < borneSmall) 
+n.small <- nrow(data.work.small)
+
+# Definition of "BIG" firms
+data.work.big <- subset(data.work, Y >= borneSmall) 
+n.big <- nrow(data.work.big)
+
+
+attach(data.work)
+@
+
+
+<<echo=FALSE>>=
+alpha=0.975   # <- for frontiers 
+## Parameters for the test CRS
+Nboot.Simar<- 39
+AlphaTest <- 0.05
+# Parameter for Li, Maasoumi, Racine Tests
+Nboot.Li <- 39
+@
+
+% ------------Debut du papier -------------
+
+% -----   TITRE ----- 
+\begin{center}
+\Large{Secteur ``\textit{\Sexpr{nom}}'' (\Sexpr{c(Secteur)}) }
+\end{center}
+
+\section{Data and outliers}
+The agro-food sector ``\textit{\Sexpr{nom}}'' (\Sexpr{c(Secteur)}), has \textbf{\Sexpr{nrow(dataall)}} observations (all years). We focus on years 2004, 2005, 2006 (\textbf{\Sexpr{n.all}} obs.) and compute the output oriented $\alpha$-frontiers to tag the outliers. Below are some descriptive statistics:
+
+<<echo=false,results=tex, label=StatDes>>=
+
+Mycap <- paste("Descriptive statistics on sector",Secteur,"")
+Mystats <-  list("n", "mean", "min",  "max", "na")
+Mylab <- "Monlabel"
+Myvars<- with(data.work, data.frame( "Output" = data.work$YV,
+                                      "Input index" = data.work$Xvol)                                                                                                                          
+                                      )
+tableContinuous(vars = Myvars, stats = Mystats, cap = Mycap, prec=2, 
+                group= data.work$an1x,
+                lab = Mylab, longtable = FALSE)
+@
+
+
+
+<<fig=TRUE,echo=false, label= PointsAll>>=
+ 
+xref =matrix(c(data.work$Xvol),nrow=n.all,ncol=1)
+yref=matrix(c(data.work$Y),nrow=n.all,ncol=1)
+
+# Bornes
+bornex <- round(max(xref), d=0)
+borney <- round(max(yref), d=0)
+bornex50 <- round(quantile(xref,probs=c(0.50))/100, d=0)*100
+borney50 <- round(quantile(yref,probs=c(0.50))/100, d=0)*100
+bornex75 <- round(quantile(xref,probs=c(0.75))/100, d=0)*100
+borney75 <- round(quantile(yref,probs=c(0.75))/100, d=0)*100
+bornex90 <- round(quantile(xref,probs=c(0.90))/100, d=0)*100
+bornex90 <- round(quantile(yref,probs=c(0.90))/100, d=0)*100
+
+opar <- par() 
+par(fig=c(0,0.8,0,0.8), new=TRUE)
+plot(data.work$Xvol, data.work$Y, col="cadetblue" ,xlab="Xvol", lwd=1, 
+    #xlim=c(0,bornex),ylim=c(0,borney),
+    ylab="Y",  main=paste(" Data points,  sector ",Secteur,""),
+    sub=paste("Input-Output data points"))
+points(data.work.out$Xvol, data.work.out$Y, col="red" )
+  
+abline(v = bornex50, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney50, col = "grey", lty = "dotted", lwd=2)
+abline(v = bornex75, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney75, col = "grey", lty = "dotted", lwd=2)
+
+par(fig=c(0,0.8,0.55,1), new=TRUE)
+boxplot(data.work$Xvol, horizontal=TRUE, axes=FALSE, col="cadetblue")
+par(fig=c(0.65,1,0,0.8),new=TRUE)
+boxplot(data.work$Y, axes=FALSE, col="cadetblue")
+par(opar)
+@
+
+
+We can zoom in the square formed by the the two medians, restricting  $Y \leq med(Y)$, \textit{i.e.} $Y \leq$ \Sexpr{round(max(data.work.small$Y),0)}  (\Sexpr{nrow(data.work.small)} points).
+
+
+<<fig=TRUE,echo=false, label=PointsSmall>>=
+par(fig=c(0,0.8,0,0.8), new=TRUE)
+plot(data.work.small$Xvol, data.work.small$Y, col="cadetblue" ,xlab="Xvol", lwd=1, 
+    ylab="Y",  
+    main=paste("Zoom on small firms, sector ",Secteur,""),
+     sub=paste("Input-Output Sample on [ Xvol <= ", round(max(data.work.small$Xvol),0),
+               ", Y <=", round(max(data.work.small$Y),0), "]"))
+points(data.work.out$Xvol, data.work.out$Y, col="red" )
+
+legend("topleft",legend=c("Data", "Quantiles"),lty=2:4,col=c("cadetblue", "grey"))
+
+#rug(Xvol, col = "cadetblue")
+abline(v = bornex50, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney50, col = "grey", lty = "dotted", lwd=2)
+abline(v = bornex75, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney75, col = "grey", lty = "dotted", lwd=2)
+
+
+par(fig=c(0,0.8,0.55,1), new=TRUE)
+boxplot(data.work.small$Xvol, horizontal=TRUE, axes=FALSE, col="cadetblue")
+par(fig=c(0.65,1,0,0.8),new=TRUE)
+boxplot(data.work.small$Y, axes=FALSE, col="cadetblue")
+par(opar)
+
+@
+
+
+\subsection{$\alpha$-Frontiers}
+
+<<fig=TRUE,echo=FALSE, label=AlphaFrontiersAll>>=
+#Frontiles
+plot(Xvol, Y, col="cadetblue",lwd=1,  
+     main=paste(" alpha-frontier for alpha=",alpha,", sector",Secteur, ""),
+     sub=paste(nrow(data.work),"points"))
+points(data.work.out$Xvol, data.work.out$Y, col="red" )
+
+alphafrontier.2d(as.matrix(Xvol),as.matrix(Y),
+                 type="output",alpha=alpha,col='blue',lty=1,add=TRUE)
+alphafrontier.2d(as.matrix(Xvol),as.matrix(Y),
+                 type="hyper",alpha=alpha,col='chocolate4',lty=1,add=TRUE)
+
+rug(xref, col = "cadetblue")
+abline(v = bornex50, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney50, col = "grey", lty = "dotted", lwd=2)
+abline(v = bornex75, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney75, col = "grey", lty = "dotted", lwd=2)
+
+legend("topleft",legend=c("output direction", "hyperbolic"),lty=c(1,1),col=c("blue","chocolate4"))
+
+@
+
+Zooming on small firms 
+
+<<fig=TRUE,echo=FALSE, label=AlphaFrontiersSmall>>=
+
+plot(data.work.small$Xvol, data.work.small$Y, col="cadetblue",lwd=1,  
+     #xlim=c(0,bornex75),ylim=c(0,borney75), 
+     main=paste(" alpha-frontier for alpha=",alpha,", sector",Secteur, "."),
+     sub=paste(nrow(data.work.small),"points"))
+     
+points(data.work.out$Xvol, data.work.out$Y, col="red" )
+
+alphafrontier.2d(as.matrix(data.work.small$Xvol),as.matrix(data.work.small$Y),
+                 type="output",alpha=alpha,col='blue',lty=1,add=TRUE)
+alphafrontier.2d(as.matrix(data.work.small$Xvol),as.matrix(data.work.small$Y),
+                 type="hyper",alpha=alpha,col='chocolate4',lty=1,add=TRUE)
+
+rug(data.work.small$Xvol, col = "cadetblue")
+
+abline(v = bornex50, col = "grey", lty = "dotted", lwd=1) 
+abline(h = borney50, col = "grey", lty = "dotted", lwd=1)
+abline(v = bornex75, col = "grey", lty = "dotted", lwd=1) 
+abline(h = borney75, col = "grey", lty = "dotted", lwd=1)
+
+legend("topleft",legend=c("output direction", "hyperbolic"),lty=c(1,1),col=c("blue","chocolate4"))
+@
+
+We can zoom with confidence bounds for \textbf{hyperbolic oriented} and \textbf{output oriented}.
+
+<<fig=TRUE,echo=FALSE>>=
+
+plot(data.work.small$Xvol, data.work.small$Y, col="cadetblue",lwd=1,  
+   # xlim=c(0,bornex75),ylim=c(0,borney75), 
+     main=paste(" alpha-frontier for alpha=",alpha,", secteur",Secteur) , 
+         sub=paste(nrow(data.work.small),"points"))
+
+points(data.work.out$Xvol, data.work.out$Y, col="red" )
+
+alphafrontier.2d(as.matrix(data.work.small$Xvol),as.matrix(data.work.small$Y),
+                 type="output",alpha=alpha,col='blue',lty=1,add=TRUE,  confidence = TRUE, shade=TRUE)
+
+alphafrontier.2d(as.matrix(data.work.small$Xvol),as.matrix(data.work.small$Y),
+                 type="hyper",alpha=alpha,col='chocolate4',lty=1,add=TRUE)
+
+rug(data.work.small$Xvol, col = "cadetblue")
+
+abline(v = bornex50, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney50, col = "grey", lty = "dotted", lwd=2)
+abline(v = bornex75, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney75, col = "grey", lty = "dotted", lwd=2)
+
+legend("topleft",legend=c("output direction", "hyperbolic"),lty=c(1,1),col=c("blue","chocolate4"))
+@
+\clearpage
+
+\section{Test CRS vs VRS (Simar \& Wilson, 2002) }
+
+%\subsection{On all firms}
+
+
+The test is done for a level $\alpha$ =\Sexpr{AlphaTest} with \Sexpr{Nboot.Simar} bootstraps and proceeds as follows:\\
+
+
+\begin{tabular}{lll}
+    Test 1 & & \\
+    \textbf{if}   &  p.value.global.crs > $\alpha$ & \textbf{then} the frontier is globally CRS(3) \\
+    \textbf{else} & (Test2)  &  \\
+                  & \textbf{if} p.value.global.nirs > $\alpha$ & \textbf{then} the frontier is globally NIRS(2) \\
+                  &\textbf{else}                            & \textbf{then} the frontier is globally VRS (1)\\
+\end{tabular}
+
+\medskip
+
+
+%\subsection{Only on small firms}
+
+We  test either on the full set of observations (\Sexpr{n.all} observations), or on the sub-sample of  \textbf{small} firms (\Sexpr{n.small} observations).
+
+
+
+\subsection{Visual representation }
+
+<<fig=TRUE,echo=false, label=PlotCRSALL>>=
+# opar <- par()  
+# par(mfrow=c(1,2))
+
+# Graph on all firms 
+Benchmarking::dea.plot.frontier(data.work$Xvol, data.work$Y,
+                               RTS="vrs" ,
+                               xlab="Xvol",  ylab="Y", lwd=1, col="cadetblue",
+    main=paste(" DEA frontiers, all firms (", n.all, "points)"),
+    sub=paste("All firms"))
+
+Benchmarking::dea.plot.frontier(data.work$Xvol, data.work$Y,
+                                RTS="crs", add= TRUE, lty="dashed", col="blue", lwd=2)
+
+points(data.work.out$Xvol, data.work.out$Y, col="red" )
+
+legend("topleft",legend=c("CRS", "VRS"), lwd=2, lty = c(2,1),
+       col=c( "blue", "cadetblue"))
+
+rug(data.work.small$Xvol, col = "cadetblue")
+abline(v = bornex50, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney50, col = "grey", lty = "dotted", lwd=2)
+abline(v = bornex75, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney75, col = "grey", lty = "dotted", lwd=2)
+
+@
+
+<<fig=TRUE,echo=false, label=PlotCRSSmall>>=
+# Graph on SMALL firms
+
+Benchmarking::dea.plot.frontier(data.work.small$Xvol, data.work.small$Y,
+                                RTS="vrs" ,
+                                xlab="Xvol",  ylab="Y", lwd=1, col="cadetblue",
+                                xlim=c(0,bornex50),ylim=c(0,borney50),
+     main=paste(" DEA frontiers, small firms (", n.small, "points)"),
+    sub=paste("Zoom on [ Xvol < ",bornex50,",  Y <", borney50, "]"))
+
+Benchmarking::dea.plot.frontier(data.work.small$Xvol, data.work.small$Y,
+                                RTS="crs", add= TRUE, lty="dashed", col="blue", lwd=2)
+
+points(data.work.out$Xvol, data.work.out$Y, col="red" )
+
+legend("topleft",legend=c("CRS", "VRS"), lwd=2, lty = c(2,1),
+       col=c( "blue", "cadetblue"))
+
+rug(data.work.small$Xvol, col = "cadetblue")
+abline(v = bornex50, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney50, col = "grey", lty = "dotted", lwd=2)
+abline(v = bornex75, col = "grey", lty = "dotted", lwd=2) 
+abline(h = borney75, col = "grey", lty = "dotted", lwd=2)
+#par(opar)
+@
+
+
+\section{Efficiencies}
+
+<<echo=false,results=tex, label=EfficenciesAll>>=
+
+#  DEA and alpha-frontiers :ONE INPUT
+#DEA
+xobs=matrix(c(data.work$Xvol),nrow=n.all,ncol=1)
+yobs=matrix(c(data.work$Y),nrow=n.all,ncol=1)
+
+spam <- Benchmarking::dea(X=xobs, Y=yobs,  RTS="vrs", ORIENTATION="out")
+data.work$DEAV <-1/spam$eff
+
+spam2 <- Benchmarking::dea(X=xobs, Y=yobs,  RTS="crs", ORIENTATION="out")
+data.work$DEAC <-1/spam2$eff
+
+# On supprime les valeurs calcul??es pour les outliers
+#data.work$DEA <-replace(data.work$DEA, which(data.work$atyp==1), NA)
+
+#alpha-frontier
+
+foo <- alphascore(xobs, yobs, xeval=xobs, yeval=yobs, alpha=alpha)
+data.work$Ascore <-foo$output
+
+#alpha-frontiere hyperbolic
+data.work$AscoreH <-foo$hyper
+
+#Table
+Mycap <- paste("Efficiency scores for all firms, sector",Secteur," alpha = ", alpha,". Frontiers computed on all firms (", nrow(data.work), "obs.).")
+
+Mylab <- "Monlabel"
+Myvars<- with(data.work, data.frame( "DEA (vrs)" = data.work$DEAV,
+                                     "DEA (crs)" = data.work$DEAC,
+                                      "alpha-Frontier Output" = data.work$Ascore,
+                                      "alpha-Frontier Hyperbolic" = data.work$AscoreH)                                                                                                                          
+                                      )                                                                                                                       
+tableContinuous(vars = Myvars, stats = Mystats, cap = Mycap, prec=2, 
+                lab = Mylab, longtable = FALSE)
+
+@
+
+<<echo=false,results=tex, label=EfficenciesSmall>>=
+
+#  DEA and alpha-frontiers :ONE INPUT
+#DEA
+xobs=matrix(c(data.work.small$Xvol),nrow=n.small,ncol=1)
+yobs=matrix(c(data.work.small$Y),nrow=n.small,ncol=1)
+
+
+spam <- Benchmarking::dea(X=xobs, Y=yobs,  RTS="vrs", ORIENTATION="out")
+data.work.small$DEAV <-1/spam$eff
+
+spam2 <- Benchmarking::dea(X=xobs, Y=yobs,  RTS="crs", ORIENTATION="out")
+data.work.small$DEAC <-1/spam2$eff
+
+
+# On supprime les valeurs calcul??es pour les outliers
+#data.work$DEA <-replace(data.work$DEA, which(data.work$atyp==1), NA)
+
+#alpha-frontier
+
+foo <- alphascore(xobs, yobs, xeval=xobs, yeval=yobs, alpha=alpha)
+data.work.small$Ascore <-foo$output
+
+#alpha-frontiere hyperbolic
+data.work.small$AscoreH <-foo$hyper
+
+#Table
+Mycap <- paste("Efficiency scores for small firms, sector",Secteur," alpha = ", alpha,". Frontiers computed on small firms (", nrow(data.work.small), " obs.).")
+
+Mylab <- "Monlabel"
+Myvars<- with(data.work.small, data.frame( "DEA (vrs)" = data.work.small$DEAV,
+                                     "DEA (crs)" = data.work.small$DEAC,
+                                      "alpha-Frontier Output" = data.work.small$Ascore,
+                                      "alpha-Frontier Hyperbolic" = data.work.small$AscoreH)                                                                                                                          
+                                      )                                                                                                                       
+tableContinuous(vars = Myvars, stats = Mystats, cap = Mycap, prec=2, 
+                lab = Mylab, longtable = FALSE)
+
+@
+
+
+<<echo=false,results=tex, label=EfficenciesBig>>=
+
+#  DEA and alpha-frontiers :ONE INPUT
+#DEA
+xobs=matrix(c(data.work.big$Xvol),nrow=n.big,ncol=1)
+yobs=matrix(c(data.work.big$Y),nrow=n.big,ncol=1)
+
+
+spam <- Benchmarking::dea(X=xobs, Y=yobs,  RTS="vrs", ORIENTATION="out")
+data.work.big$DEAV <-1/spam$eff
+
+spam2 <- Benchmarking::dea(X=xobs, Y=yobs,  RTS="crs", ORIENTATION="out")
+data.work.big$DEAC <-1/spam2$eff
+
+
+# On supprime les valeurs calcul??es pour les outliers
+#data.work$DEA <-replace(data.work$DEA, which(data.work$atyp==1), NA)
+
+#alpha-frontier
+
+foo <- alphascore(xobs, yobs, xeval=xobs, yeval=yobs, alpha=alpha)
+data.work.big$Ascore <-foo$output
+
+#alpha-frontiere hyperbolic
+data.work.big$AscoreH <-foo$hyper
+
+#Table
+Mycap <- paste("Efficiency scores for big firms, sector",Secteur," alpha = ", alpha,". Frontiers computed on big firms (", nrow(data.work.big), " obs.).")
+
+Mylab <- "Monlabel"
+Myvars<- with(data.work.big, data.frame( "DEA (vrs)" = data.work.big$DEAV,
+                                     "DEA (crs)" = data.work.big$DEAC,
+                                      "alpha-Frontier Output" = data.work.big$Ascore,
+                                      "alpha-Frontier Hyperbolic" = data.work.big$AscoreH)                                                                                                                          
+                                      )                                                                                                                       
+tableContinuous(vars = Myvars, stats = Mystats, cap = Mycap, prec=2, 
+                lab = Mylab, longtable = FALSE)
+
+@
+
+\clearpage
+
+\subsection{Testing equality of $\alpha$-efficiency distributions of small and big firms  ( Li, Maasoumi, and Racine (2009).)}
+
+<<echo=false, results=hide, label=TestLi>>=
+eff.alpha.small <- data.frame(x=data.work.small$Ascore)
+eff.alpha.big <- data.frame(x=data.work.big$Ascore)
+
+Test.eff <- npdeneqtest(eff.alpha.small,eff.alpha.big , boot.num=Nboot.Li)
+
+# Extracting information
+if (Test.eff$Tn.P > 0.01) {
+  reject <- "Reject" 
+} else {
+    reject <- "Accept"
+}
+  
+
+@
+
+\begin{table}[h]
+\begin{tabular}{llccc}
+  \hline \hline
+Sector & $\alpha$ (frontier)& Test Statistic &  p-value & outcome  \\ \hline
+\Sexpr{Secteur} & \Sexpr{alpha} & \Sexpr{round(Test.eff$Tn,3)} & \Sexpr{round(Test.eff$Tn.P,3)} & \Sexpr{reject}  \\
+\end{tabular}
+\caption{Testing equality of distribution of small and big firms efficiency (\Sexpr{Nboot.Li} bootstraps)}
+\end{table}
+
+
+<<echo=false, results=hide, label=SummaryTestLi>>=
+summary(Test.eff)
+@
+
+
+\end{document}
